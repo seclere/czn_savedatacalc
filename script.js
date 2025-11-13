@@ -1,311 +1,680 @@
-/* JavaScript Document
 
-TemplateMo 601 Chain Summit
+  // --- State ---
+  const slotsEl = document.getElementById('slots');
+  const slotCountInput = document.getElementById('slotCount');
+  const applySlotsBtn = document.getElementById('applySlots');
+  const resetBtn = document.getElementById('reset');
+  const clearBtn = document.getElementById('clear');
+  const saveBtn = document.getElementById('save');
+  const loadBtn = document.getElementById('load');
+  const palette = document.getElementById('palette');
+  const addCustom = document.getElementById('addCustom');
+  const toggleClone = document.getElementById('toggleClone');
+  const customName = document.getElementById('customName');
 
-https://templatemo.com/tm-601-chain-summit
+  const COSTS = {
+  'A': 0, // Character Card
+  'B': 20, // Neutral Card
+  'C': 80, // Monster Card
+  'D': 20, // Forbidden Card
+  'BConverted': 10,
+  'RConverted': 10,
+  'Character Epiphany': 0,
+  'Neutral Epiphany': 10,
+  'Divine Epiphany': 20
+  };
 
-*/
+  //---LOGS---
+  let logEl = document.getElementById('slotLog');
+    if (!logEl) {
+        logEl = document.createElement('div');
+        logEl.id = 'slotLog';
+        logEl.style.marginTop = '12px';
+        logEl.style.fontSize = '12px';
+        logEl.style.color = '#ccc';
+        slotsEl.parentElement.appendChild(logEl);
+    }
 
-
-// Animate counter numbers
-function animateCounters() {
-   const counters = document.querySelectorAll('.stat-number');
-   counters.forEach(counter => {
-      const target = parseInt(counter.getAttribute('data-target'));
-      const increment = target / 200;
-      let current = 0;
-
-      const timer = setInterval(() => {
-         current += increment;
-         counter.textContent = Math.floor(current);
-
-         if (current >= target) {
-            counter.textContent = target;
-            clearInterval(timer);
-         }
-      }, 10);
-   });
+    function logAction(message) {
+    const entry = document.createElement('div');
+    entry.textContent = message;
+    logEl.appendChild(entry);
+    logEl.scrollTop = logEl.scrollHeight; // auto scroll to bottom
 }
 
-// Countdown timer
-function updateCountdown() {
-   const eventDate = new Date('2026-11-14T09:00:00');
-   const now = new Date();
-   const diff = eventDate - now;
-
-   if (diff > 0) {
-      const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-      const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-      const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-      const seconds = Math.floor((diff % (1000 * 60)) / 1000);
-
-      document.getElementById('days').textContent = days.toString().padStart(2, '0');
-      document.getElementById('hours').textContent = hours.toString().padStart(2, '0');
-      document.getElementById('minutes').textContent = minutes.toString().padStart(2, '0');
-      document.getElementById('seconds').textContent = seconds.toString().padStart(2, '0');
-   }
+// Render logs from state.logs (call this after loading or resetting)
+function renderLogs() {
+    logEl.innerHTML = '';
+    state.logs.forEach(msg => {
+        const entry = document.createElement('div');
+        entry.textContent = msg;
+        logEl.appendChild(entry);
+    });
+    logEl.scrollTop = logEl.scrollHeight;
 }
 
-// Create neural network animation
-function createNeuralNetwork() {
-   const container = document.getElementById('neuralNetwork');
-   const nodes = 20;
+const ACTIONS = [
+{
+  name: 'Removal',
+  cost: [0, 10, 30, 50, 70],
+  extraCharCost: 20,
+  apply: (slotData, usageCount = 0) => {
+    if (!slotData) return 0;
 
-   for (let i = 0; i < nodes; i++) {
-      const node = document.createElement('div');
-      node.className = 'node';
-      node.style.left = Math.random() * 100 + '%';
-      node.style.top = Math.random() * 100 + '%';
-      node.style.animationDelay = Math.random() * 2 + 's';
-      container.appendChild(node);
+    // Determine cost based on usageCount (or just always pick the first for simplicity)
+    const costIndex = Math.min(usageCount, 4);
+    let actionCost = ACTIONS.find(a => a.name === 'Removal').cost[costIndex];
 
-      // Create connections
-      if (i > 0 && Math.random() > 0.5) {
-         const connection = document.createElement('div');
-         connection.className = 'connection';
-         connection.style.left = Math.random() * 100 + '%';
-         connection.style.top = Math.random() * 100 + '%';
-         connection.style.width = Math.random() * 200 + 50 + 'px';
-         connection.style.animationDelay = Math.random() * 3 + 's';
-         container.appendChild(connection);
+    // Extra if Character Card
+    if (slotData.type === 'A') actionCost += 20;
+
+    // Save the action cost on the slot
+    slotData.actionCost = actionCost;
+
+    // Clear the slot
+    slotData.type = null;
+    slotData.label = null;
+    slotData.modifier = null;
+    slotData.img = null;
+    slotData.action = null;
+
+    return actionCost;
+  }
+},
+  {
+    name: 'Copy',
+    cost: [0, 10, 30, 50, 70],
+    apply: (slotData, targetSlot, usageCount = 0) => {
+      if (!slotData || !targetSlot) return 0;
+
+      // Copy card data
+      targetSlot.type = slotData.type;
+      targetSlot.label = slotData.label;
+      targetSlot.modifier = slotData.modifier;
+      targetSlot.img = slotData.img;
+
+      // Cost based on usage
+      const costIndex = Math.min(usageCount, 4);
+      return ACTIONS.find(a => a.name === 'Copy').cost[costIndex];
+    }
+  },
+];
+
+  function getSlotCap() {
+  const tier = parseInt(document.querySelectorAll('.controls input')[1].value, 10) || 1;
+  return 30 + (tier - 1) * 10;
+  }
+
+function resetSlots() {
+  const defaultSlots = Array(state.slotCount).fill(null);
+
+  // Fill first 8 slots with Character Cards
+  for (let i = 0; i < Math.min(8, state.slotCount); i++) {
+    defaultSlots[i] = { type: 'A', label: 'Character Card' };
+  }
+  
+  state.slots = defaultSlots;
+  renderSlots();
+
+  const logEl = document.getElementById('slotLog');
+    if (logEl) logEl.innerHTML = '';
+}
+
+
+  let cloneMode = false;
+  let state = {
+    slotCount: parseInt(slotCountInput.value, 10) || 12,
+    slots: [] // each slot: {type,label,modifier,img} or null
+  };
+
+  // --- Helpers ---
+  function makeItemElement(itemData) {
+    const div = document.createElement('div');
+    div.className = 'item';
+    div.draggable = true;
+    div.dataset.type = itemData.type || 'X';
+    div.textContent = itemData.label || itemData.type || 'Item';
+    if (div.textContent.length > 10) div.classList.add('small');
+
+    div.addEventListener('dragstart', e => {
+      e.dataTransfer.setData('text/plain', JSON.stringify(itemData));
+      const parentSlot = div.closest('.slot');
+      if (parentSlot && parentSlot.dataset.index !== undefined) {
+        e.dataTransfer.setData('source-slot', parentSlot.dataset.index);
       }
-   }
+    });
+
+    div.addEventListener('click', () => placeIntoFirstEmptySlot(itemData));
+    return div;
+  }
+
+  function removeSlotAt(index) {
+  const slotData = state.slots[index];
+  if (!slotData) return;
+
+  // Mark as removed
+  slotData.status = 'removed';
+  slotData.action = 'Removal';
+
+  // Remove from current position
+  state.slots[index] = null;
+
+  // Push it to the end
+  state.slots.push(slotData);
+
+  // Ensure array stays at original length
+  while (state.slots.length > state.slotCount) {
+    state.slots.splice(state.slotCount, 1);
+  }
+
+  renderSlots();
 }
 
-// Create floating particles
-function createParticles() {
-   const container = document.getElementById('particles');
-   const particleCount = 50;
 
-   for (let i = 0; i < particleCount; i++) {
-      const particle = document.createElement('div');
-      particle.className = 'particle';
-      particle.style.left = Math.random() * 100 + '%';
-      particle.style.animationDelay = Math.random() * 6 + 's';
-      particle.style.animationDuration = (10 + Math.random() * 4) + 's';
-      container.appendChild(particle);
-   }
+function renderSlots() {
+  slotsEl.innerHTML = '';
+  const count = state.slotCount;
+
+  let totalCost = 0; // accumulate total cost across all slots
+
+  for (let i = 0; i < count; i++) {
+    const slot = document.createElement('div');
+    slot.className = 'slot';
+    slot.dataset.index = i;
+    slot.setAttribute('aria-label', `Slot ${i + 1}`);
+
+    const itemData = state.slots[i];
+
+    // --- Drag & Drop ---
+    slot.addEventListener('dragover', e => { e.preventDefault(); slot.classList.add('drag-over'); });
+    slot.addEventListener('dragleave', () => slot.classList.remove('drag-over'));
+    slot.addEventListener('drop', e => {
+  e.preventDefault();
+  slot.classList.remove('drag-over');
+  const json = e.dataTransfer.getData('text/plain');
+  if (!json) return;
+  const dropped = JSON.parse(json);
+const sourceSlotIndex = e.dataTransfer.getData('source-slot');
+
+// Only block palette drops of converted cards onto empty slots
+if (!sourceSlotIndex && (dropped.type === 'BConverted' || dropped.type === 'RConverted') && !state.slots[i]?.type) {
+  alert("You can only place this on a slot with an existing card.");
+  return;
 }
 
-// Schedule tab functionality
-function showSchedule(day, event) {
-   // Hide all schedule content
-   document.querySelectorAll('.schedule-content').forEach(content => {
-      content.classList.remove('active');
-   });
 
-   // Remove active class from all tabs
-   document.querySelectorAll('.tab-btn').forEach(tab => {
-      tab.classList.remove('active');
-   });
+  if (dropped.type === 'modifier') {
+    const old = slot.querySelector('.modifier-overlay');
+    if (old) old.remove();
 
-   // Show selected day and activate tab
-   document.getElementById(day).classList.add('active');
-   event.target.classList.add('active');
+    const overlay = document.createElement('img');
+    overlay.src = dropped.image;
+    overlay.className = 'modifier-overlay';
+    overlay.title = dropped.effect;
+    slot.appendChild(overlay);
+
+    if (!state.slots[i]) state.slots[i] = { type:'', label:'', modifier:'', img:'' };
+    state.slots[i].modifier = dropped.effect;
+    state.slots[i].img = dropped.image;
+    renderSlots();
+    return;
+  }
+
+  if (sourceSlotIndex) {
+    const src = Number(sourceSlotIndex);
+    if (src === i) return;
+    state.slots[i] = {...state.slots[src]};
+    state.slots[src] = null;
+  } else {
+    const prevLabel = state.slots[i]?.label || '(empty)';
+        if (!state.slots[i]) state.slots[i] = {};
+
+        state.slots[i].type = dropped.type;
+        state.slots[i].label = dropped.label;
+
+        // If the card is a converted card, mark it as converted
+        if (dropped.type === 'BConverted' || dropped.type === 'RConverted') {
+            logAction(`Slot ${i + 1} converted: ${prevLabel} → ${dropped.label}, Cost 10`);
+        } else {
+            logAction(`Slot ${i + 1} card changed: ${prevLabel} → ${dropped.label}`);
+        }
+    }
+
+  renderSlots();
+});
+
+// --- Mobile-friendly menu button ---
+const menuBtn = document.createElement('button');
+menuBtn.className = 'slot-menu-btn';
+menuBtn.textContent = '⋮';
+menuBtn.style.position = 'absolute';
+menuBtn.style.bottom = '4px';
+menuBtn.style.right = '4px';
+menuBtn.style.padding = '2px 6px';
+menuBtn.style.fontSize = '12px';
+menuBtn.style.border = 'none';
+menuBtn.style.borderRadius = '4px';
+menuBtn.style.background = 'rgba(255,255,255,0.1)';
+menuBtn.style.color = 'white';
+menuBtn.style.cursor = 'pointer';
+menuBtn.style.zIndex = '10';
+
+// When clicked, show the same modifier menu
+menuBtn.addEventListener('click', e => {
+    e.stopPropagation();
+    showModifierMenu(slot, slot.getBoundingClientRect().right, slot.getBoundingClientRect().bottom);
+});
+
+slot.appendChild(menuBtn);
+
+
+    // --- Right-click modifier/action menu ---
+    const modifierMenu = document.getElementById('modifierMenu');
+document.body.appendChild(modifierMenu);
+modifierMenu.style.position = 'fixed'; // fixed works best for right-click menus
+
+
+    function showModifierMenu(slot, x, y) {
+      modifierMenu.innerHTML = '';
+
+      // Header: Epiphanies + Close
+      const header = document.createElement('div');
+      header.style.display = 'flex';
+      header.style.justifyContent = 'space-between';
+      header.style.alignItems = 'center';
+      header.style.marginBottom = '4px';
+
+      const epiphTitle = document.createElement('span');
+      epiphTitle.textContent = 'Epiphanies';
+      epiphTitle.style.fontWeight = 'bold';
+      header.appendChild(epiphTitle);
+
+      const closeBtn = document.createElement('span');
+      closeBtn.textContent = '✕';
+      closeBtn.style.cursor = 'pointer';
+      closeBtn.style.fontWeight = 'bold';
+      closeBtn.addEventListener('click', () => modifierMenu.style.display = 'none');
+      header.appendChild(closeBtn);
+
+      modifierMenu.appendChild(header);
+
+      // Epiphanies
+      const modifierItems = Array.from(document.querySelectorAll('#modifiers .modifier'));
+      modifierItems.forEach(mod => {
+  const btn = createMenuButton(mod.dataset.effect, mod.querySelector('img').src, () => {
+    const idx = Number(slot.dataset.index);
+    if (!state.slots[idx]) state.slots[idx] = { type:'', label:'', modifier:'', img:'' };
+
+    const prevModifier = state.slots[idx].modifier || 'None';
+    state.slots[idx].modifier = mod.dataset.effect;
+    state.slots[idx].img = mod.querySelector('img').src;
+
+    // Log the epiphany being applied
+    logAction(`Slot ${idx + 1}: Epiphany applied — ${mod.dataset.effect} (was: ${prevModifier})`);
+
+    modifierMenu.style.display = 'none';
+    renderSlots();
+  });
+  modifierMenu.appendChild(btn);
+});
+
+
+      // Actions
+      const actionsTitle = document.createElement('div');
+      actionsTitle.textContent = 'Actions';
+      actionsTitle.style.fontWeight = 'bold';
+      actionsTitle.style.marginTop = '8px';
+      actionsTitle.style.marginBottom = '4px';
+      modifierMenu.appendChild(actionsTitle);
+
+      ACTIONS.forEach(action => {
+  const btn = document.createElement('div');
+  btn.style.display = 'flex';
+  btn.style.alignItems = 'center';
+  btn.style.justifyContent = 'flex-start';
+  btn.style.gap = '6px';
+  btn.style.padding = '4px 6px';
+  btn.style.cursor = 'pointer';
+  btn.style.borderRadius = '6px';
+  btn.style.background = 'rgba(255,255,255,0.03)';
+  btn.style.marginBottom = '4px';
+  btn.textContent = action.name;
+
+  btn.addEventListener('click', () => {
+    const idx = Number(slot.dataset.index);
+    if (!state.slots[idx]) state.slots[idx] = { type:'', label:'', modifier:'', img:'', action:null, actionCost:0 };
+
+    const slotData = state.slots[idx];
+    slotData.action = action.name;
+
+    if (action.name === 'Removal') {
+    slotData.status = 'removed';
+
+    let tierCost = 0;
+    let extraChar = 0;
+
+    if (slotData.type !== 'RConverted') {
+        // Count removed cards excluding RConverted
+        const removedCount = state.slots.filter(s => s?.status === 'removed' && s?.type !== 'RConverted').length;
+
+        const tierIndex = Math.min(removedCount - 1, action.cost.length - 1);
+        tierCost = action.cost[tierIndex];
+
+        if (slotData.type === 'A') extraChar = action.extraCharCost;
+    }
+
+    slotData.actionCost = tierCost + extraChar;
+
+    logAction(`Slot ${idx+1} removed: Tier Cost ${tierCost}, Total Cost ${slotData.actionCost}`);
+} if (action.name === 'Copy') {
+        
+    // Find an empty slot to place the copy
+    const emptyIdx = state.slots.findIndex(s => !s);
+    if (emptyIdx === -1) return; // no space
+
+   // Count existing replicated slots (excluding the one we're about to create)
+    const copyCount = state.slots.filter(s => s?.status === 'replicated').length;
+
+    // Determine tiered cost
+    const tierIndex = Math.min(copyCount, action.cost.length - 1);
+    const tierCost = action.cost[tierIndex];
+
+    slotData.actionCost = tierCost;
+
+    // Extra cost if Character Card
+    const extraChar = slotData.type === 'A' ? action.extraCharCost : 0;
+
+    // Place the new copy
+    state.slots[emptyIdx] = {
+        type: slotData.type,
+        label: slotData.label,
+        modifier: slotData.modifier,
+        img: slotData.img,
+        status: 'replicated',
+        action: 'Copy',
+        actionCost: tierCost + extraChar
+    };
+
+    logAction(`Slot ${idx+1} copied: Cost ${tierCost}`);
+
+    renderSlots();
 }
 
-// Mobile menu toggle
-function toggleMenu() {
-   const mobileMenu = document.querySelector('.mobile-menu');
-   const mobileNav = document.getElementById('mobileNav');
+    modifierMenu.style.display = 'none';
+    renderSlots();
+  });
 
-   mobileMenu.classList.toggle('active');
-   mobileNav.classList.toggle('active');
+  modifierMenu.appendChild(btn);
+});
 
-   // Prevent body scroll when menu is open
-   document.body.style.overflow = mobileNav.classList.contains('active') ? 'hidden' : 'auto';
-}
+      modifierMenu.style.left = x + 'px';
+      modifierMenu.style.top = y + 'px';
+      modifierMenu.style.display = 'block';
+    }
 
-function closeMenu() {
-   const mobileMenu = document.querySelector('.mobile-menu');
-   const mobileNav = document.getElementById('mobileNav');
-
-   mobileMenu.classList.remove('active');
-   mobileNav.classList.remove('active');
-   document.body.style.overflow = 'auto';
-}
-
-// Timeline item toggle
-function toggleTimelineItem(item) {
-   item.classList.toggle('expanded');
-}
-
-// Smooth scrolling for navigation links
-document.querySelectorAll('a[href^="#"]').forEach(anchor => {
-   anchor.addEventListener('click', function (e) {
+    slot.addEventListener('contextmenu', e => {
       e.preventDefault();
-      const target = document.querySelector(this.getAttribute('href'));
-      if (target) {
-         target.scrollIntoView({
-            behavior: 'smooth',
-            block: 'start'
-         });
+      const isOpen = modifierMenu.style.display === 'block' &&
+                     modifierMenu.dataset.slot === slot.dataset.index;
+      if (isOpen) {
+        modifierMenu.style.display = 'none';
+        return;
       }
-   });
+      showModifierMenu(slot, e.pageX, e.pageY);
+    });
+
+    // --- Render item ---
+    if (itemData) {
+      if (itemData.type) slot.appendChild(makeItemElement(itemData));
+
+      if (itemData.modifier) {
+        const overlay = document.createElement('img');
+        overlay.className = 'modifier-overlay';
+        overlay.src = itemData.img || '';
+        overlay.title = itemData.modifier;
+        slot.appendChild(overlay);
+      }
+
+      if (itemData.status) {
+        const statusTag = document.createElement('span');
+        statusTag.textContent = itemData.status.charAt(0).toUpperCase() + itemData.status.slice(1);
+        statusTag.style.fontSize = '10px';
+        statusTag.style.color = '#aaa';
+        statusTag.style.position = 'absolute';
+        statusTag.style.top = '2px';
+        statusTag.style.middle = '2px';
+        slot.appendChild(statusTag);
+      }
+
+      const rem = document.createElement('button');
+      rem.className = 'remove';
+      rem.innerText = '✕';
+      rem.addEventListener('click', ev => {
+        ev.stopPropagation();
+        state.slots[i] = null;
+        renderSlots();
+      });
+      slot.appendChild(rem);
+    }
+
+    // --- Cost calculation ---
+    let baseCost = itemData?.type && itemData.status !== 'replicated' ? COSTS[itemData.type] || 0 : 0;
+    totalCost += baseCost;
+    totalCost += itemData?.modifier ? COSTS[itemData.modifier] || 0 : 0;
+    totalCost += itemData?.actionCost || 0;
+
+
+    slotsEl.appendChild(slot);
+  }
+
+  // --- Display total ---
+  let totalDisplay = document.getElementById('totalCostDisplay');
+  if (!totalDisplay) {
+    totalDisplay = document.createElement('div');
+    totalDisplay.id = 'totalCostDisplay';
+    totalDisplay.style.marginTop = '8px';
+    totalDisplay.style.fontWeight = '600';
+    slotsEl.parentElement.insertBefore(totalDisplay, slotsEl.nextSibling);
+  }
+  const cap = getSlotCap();
+  totalDisplay.textContent = `Total: ${totalCost} / ${cap}`;
+  totalDisplay.style.color = totalCost > cap ? 'red' : 'white';
+}
+
+
+function createMenuButton(label, imgSrc, onClick) {
+  const btn = document.createElement('div');
+  btn.style.display = 'flex';
+  btn.style.alignItems = 'center';
+  btn.style.gap = '6px';
+  btn.style.padding = '4px 6px';
+  btn.style.cursor = 'pointer';
+  btn.style.borderRadius = '6px';
+  btn.style.background = 'rgba(255,255,255,0.03)';
+  btn.style.marginBottom = '4px';
+
+  if(imgSrc){
+    const img = document.createElement('img');
+    img.src = imgSrc;
+    img.style.width = '24px';
+    img.style.height = '24px';
+    btn.appendChild(img);
+  }
+
+  const lbl = document.createElement('span');
+  lbl.textContent = label;
+  btn.appendChild(lbl);
+
+  btn.addEventListener('click', onClick);
+  return btn;
+}
+
+
+  function placeIntoFirstEmptySlot(itemData) {
+    const idx = state.slots.findIndex(x => !x);
+    if (idx === -1) { alert('No empty slots available.'); return; }
+    state.slots[idx] = { ...itemData };
+    renderSlots();
+  }
+
+  function setupPalette() {
+    const items = Array.from(palette.querySelectorAll('.item, .modifier'));
+    items.forEach((it, idx) => {
+      const isModifier = it.classList.contains('modifier');
+      const data = isModifier
+        ? { type:'modifier', effect: it.dataset.effect, image: it.querySelector('img')?.src || '' }
+        : { type: it.dataset.type || 'T'+idx, label: it.textContent.trim() };
+
+      it.addEventListener('dragstart', e => {
+        e.dataTransfer.setData('text/plain', JSON.stringify(data));
+        e.dataTransfer.setData('source-slot', '');
+      });
+
+      if (isModifier) {
+        it.addEventListener('click', () => {
+          placeModifierIntoFirstSlot(data);
+        });
+      }
+    });
+  }
+
+  function placeModifierIntoFirstSlot(modifierData){
+    const slot = Array.from(slotsEl.children).find(s => !s.dataset.modifier);
+    if (!slot) return alert('No slots available for modifier.');
+    const old = slot.querySelector('.modifier-overlay'); if(old) old.remove();
+    const overlay = document.createElement('img');
+    overlay.src = modifierData.image;
+    overlay.className = 'modifier-overlay';
+    overlay.title = modifierData.effect;
+    slot.appendChild(overlay);
+
+    const idx = Number(slot.dataset.index);
+    if (!state.slots[idx]) state.slots[idx] = { type:'', label:'', modifier:'', img:'' };
+    state.slots[idx].modifier = modifierData.effect;
+    state.slots[idx].img = modifierData.image;
+  }
+
+  addCustom.addEventListener('click', ()=>{
+    const name = customName.value.trim() || 'Custom';
+    const type = 'C'+Math.floor(Math.random()*999);
+    const el = document.createElement('div');
+    el.className='item'; el.draggable=true; el.dataset.type=type; el.textContent=name;
+    palette.appendChild(el);
+    setupPalette();
+    customName.value='';
+  });
+
+  toggleClone.addEventListener('click', ()=>{
+    cloneMode = !cloneMode;
+    toggleClone.textContent=`Clone Mode: ${cloneMode?'ON':'OFF'}`;
+  });
+
+  applySlotsBtn.addEventListener('click', ()=>{
+    const newCount = Math.max(1, Math.min(48, parseInt(slotCountInput.value,10)||12));
+    state.slotCount = newCount;
+    state.slots = state.slots.slice(0,newCount);
+    while(state.slots.length<newCount) state.slots.push(null);
+    renderSlots();
+  });
+
+  clearBtn.addEventListener('click', ()=>{
+    if(!confirm('Clear all slots?')) return;
+    state.slots = Array(state.slotCount).fill(null);
+    const logEl = document.getElementById('slotLog');
+    if (logEl) logEl.innerHTML = '';
+    renderSlots();
+  });
+
+  resetBtn.addEventListener('click', () => {
+  resetSlots();
+  renderSlots();
 });
 
-// Update active menu items on scroll
-function updateActiveMenuItem() {
-   const sections = document.querySelectorAll('section[id]');
-   const scrollPosition = window.scrollY + 100;
-
-   sections.forEach(section => {
-      const sectionTop = section.offsetTop;
-      const sectionHeight = section.offsetHeight;
-      const sectionId = section.getAttribute('id');
-
-      if (scrollPosition >= sectionTop && scrollPosition < sectionTop + sectionHeight) {
-         // Update desktop menu
-         document.querySelectorAll('.nav-links a').forEach(link => {
-            link.classList.remove('active');
-            if (link.getAttribute('href') === `#${sectionId}`) {
-               link.classList.add('active');
-            }
-         });
-
-         // Update mobile menu
-         document.querySelectorAll('.mobile-nav a').forEach(link => {
-            link.classList.remove('active');
-            if (link.getAttribute('href') === `#${sectionId}`) {
-               link.classList.add('active');
-            }
-         });
-      }
-   });
+// --- Encode/decode helpers ---
+function encodeBase64(obj) {
+    return btoa(unescape(encodeURIComponent(JSON.stringify(obj))));
 }
 
-// Header scroll effect
-window.addEventListener('scroll', () => {
-   const header = document.querySelector('header');
-   if (window.scrollY > 100) {
-      header.style.background = 'rgba(10, 10, 15, 0.95)';
-      header.style.borderBottom = '1px solid rgba(255, 255, 255, 0.1)';
-   } else {
-      header.style.background = 'rgba(10, 10, 15, 0.9)';
-      header.style.borderBottom = '1px solid rgba(255, 255, 255, 0.05)';
-   }
+function decodeBase64(str) {
+    try {
+        return JSON.parse(decodeURIComponent(escape(atob(str))));
+    } catch {
+        return null; // invalid Base64 or corrupted data
+    }
+}
 
-   // Update active menu item
-   updateActiveMenuItem();
+// --- Copy current loadout to clipboard ---
+saveBtn.addEventListener('click', () => {
+    const payload = {
+        slotCount: state.slotCount,
+        slots: state.slots,
+        logs: state.logs || [] // always include logs
+    };
+    const code = encodeBase64(payload);
+    navigator.clipboard.writeText(code)
+        .then(() => alert('Loadout code copied!'))
+        .catch(() => alert('Failed to copy loadout code'));
 });
 
-// Intersection Observer for scroll animations
-const observerOptions = {
-   threshold: 0.1,
-   rootMargin: '0px 0px -100px 0px'
-};
+// --- Paste a loadout code from user input ---
+loadBtn.addEventListener('click', () => {
+    const code = prompt('Paste loadout code:');
+    if (!code) return;
 
-const observer = new IntersectionObserver((entries) => {
-   entries.forEach(entry => {
-      if (entry.isIntersecting) {
-         entry.target.classList.add('animated');
-      }
-   });
-}, observerOptions);
+    const data = decodeBase64(code.trim());
+    if (!data || !Array.isArray(data.slots)) {
+        alert('Invalid loadout code');
+        return;
+    }
 
-// Initialize scroll animations
-function initScrollAnimations() {
-   // Add animation classes to elements
-   document.querySelectorAll('.section h2').forEach(heading => {
-      heading.classList.add('animate-on-scroll');
-   });
+    state.slotCount = data.slotCount || state.slotCount;
+    state.slots = data.slots.concat();
+    while (state.slots.length < state.slotCount) state.slots.push(null);
+    state.logs = Array.isArray(data.logs) ? data.logs : [];
 
-   document.querySelectorAll('.timeline-item').forEach((item, index) => {
-      item.style.setProperty('--stagger', index + 1);
-      item.classList.add('stagger-animation');
-   });
-
-   // Observe all animation elements
-   document.querySelectorAll('.animate-on-scroll').forEach(el => {
-      observer.observe(el);
-   });
-}
-
-// Add hexagonal decorations dynamically
-function addHexDecorations() {
-   const sections = document.querySelectorAll('.section');
-   sections.forEach((section, index) => {
-      if (index > 0) { // Skip hero section
-         const hexCount = 2 + Math.floor(Math.random() * 3);
-         for (let i = 0; i < hexCount; i++) {
-            const hex = document.createElement('div');
-            hex.className = 'hex-decoration';
-            hex.style.top = Math.random() * 80 + 10 + '%';
-            hex.style.left = Math.random() * 80 + 10 + '%';
-            hex.style.animationDelay = Math.random() * 6 + 's';
-            section.style.position = 'relative';
-            section.appendChild(hex);
-         }
-      }
-   });
-}
-
-// Handle contact form submission
-function handleContactSubmit(event) {
-   event.preventDefault();
-
-   const name = document.getElementById('contactName').value;
-   const email = document.getElementById('contactEmail').value;
-   const subject = document.getElementById('contactSubject').value;
-   const message = document.getElementById('contactMessage').value;
-
-   // Simulate form submission (in a real scenario, this would send to a server)
-   if (name && email && subject && message) {
-      // Show success message
-      alert('Thank you for your message! We\'ll get back to you soon.');
-
-      // Clear the form
-      document.getElementById('contactName').value = '';
-      document.getElementById('contactEmail').value = '';
-      document.getElementById('contactSubject').value = '';
-      document.getElementById('contactMessage').value = '';
-   }
-}
-
-// Handle email submission
-function handleEmailSubmit(event) {
-   event.preventDefault();
-
-   const emailInput = document.getElementById('emailInput');
-   const formMessage = document.getElementById('formMessage');
-   const email = emailInput.value;
-
-   // Simulate form submission (in a real scenario, this would send to a server)
-   if (email) {
-      // Show success message
-      formMessage.textContent = 'Thank you for signing up! We\'ll keep you updated on Chain Summit.';
-      formMessage.className = 'form-message success';
-      formMessage.style.display = 'block';
-
-      // Clear the input
-      emailInput.value = '';
-
-      // Hide message after 5 seconds
-      setTimeout(() => {
-         formMessage.style.display = 'none';
-      }, 5000);
-   } else {
-      // Show error message
-      formMessage.textContent = 'Please enter a valid email address.';
-      formMessage.className = 'form-message error';
-      formMessage.style.display = 'block';
-
-      // Hide message after 3 seconds
-      setTimeout(() => {
-         formMessage.style.display = 'none';
-      }, 3000);
-   }
-}
-
-// Initialize everything when page loads
-window.addEventListener('load', () => {
-   animateCounters();
-   createNeuralNetwork();
-   createParticles();
-   updateCountdown();
-   initScrollAnimations();
-   addHexDecorations();
-
-   // Update countdown every second
-   setInterval(updateCountdown, 1000);
+    renderSlots();
+    renderLogs();
+    logAction('Loadout restored from code');
+    alert('Loadout loaded successfully!');
 });
+
+
+
+// --- Generate a shareable code ---
+function generateLoadoutCode() {
+    const payload = {
+        slotCount: state.slotCount,
+        slots: state.slots,
+        logs: state.logs
+    };
+    return encodeBase64(payload);
+}
+
+// --- Load from a code ---
+function loadFromCode(code) {
+    try {
+        const data = decodeBase64(code.trim());
+        state.slotCount = data.slotCount || state.slotCount;
+        state.slots = data.slots.concat();
+        while (state.slots.length < state.slotCount) state.slots.push(null);
+        state.logs = data.logs || [];
+        renderSlots();
+        renderLogs();
+        logAction('Loadout restored from code');
+    } catch (e) {
+        alert('Invalid loadout code');
+    }
+}
+
+
+
+  function init(){
+    state.slotCount = parseInt(slotCountInput.value,10) || 12;
+    state.slots = Array(state.slotCount).fill(null);
+    state.actionUsage = { Removal: 0, Copy: 0, Conversion: 0 };
+
+    resetSlots();
+    setupPalette();
+    renderSlots();
+  }
+  init();
