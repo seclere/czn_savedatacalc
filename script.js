@@ -301,20 +301,54 @@ modifierMenu.style.position = 'fixed'; // fixed works best for right-click menus
       // Epiphanies
       const modifierItems = Array.from(document.querySelectorAll('#modifiers .modifier'));
       modifierItems.forEach(mod => {
-  const btn = createMenuButton(mod.dataset.effect, mod.querySelector('img').src, () => {
-    const idx = Number(slot.dataset.index);
-    if (!state.slots[idx]) state.slots[idx] = { type:'', label:'', modifier:'', img:'' };
+      const btn = createMenuButton(mod.dataset.effect, mod.querySelector('img').src, () => {
+        const idx = Number(slot.dataset.index);
+        if (!state.slots[idx]) state.slots[idx] = { type:'', label:'', modifier:'', img:'' };
 
-    const prevModifier = state.slots[idx].modifier || 'None';
-    state.slots[idx].modifier = mod.dataset.effect;
-    state.slots[idx].img = mod.querySelector('img').src;
+        const prevModifier = state.slots[idx].modifier || 'None';
+        state.slots[idx].modifier = mod.dataset.effect;
+        state.slots[idx].img = mod.querySelector('img').src;
 
-    // Log the epiphany being applied
-    logAction(`Slot ${idx + 1}: Epiphany applied — ${mod.dataset.effect} (was: ${prevModifier})`);
+        // Log the epiphany being applied
+        logAction(`Slot ${idx + 1}: Epiphany applied — ${mod.dataset.effect} (was: ${prevModifier})`);
 
-    modifierMenu.style.display = 'none';
-    renderSlots();
-  });
+        modifierMenu.style.display = 'none';
+        renderSlots();
+      });
+
+      
+  modifierMenu.appendChild(btn);
+});
+
+// --- Card Palette (mobile-friendly alternative to drag) ---
+const paletteItems = Array.from(document.querySelectorAll('.item[data-source="palette"], .item[data-source="convertedPalette"]'));
+const cardsTitle = document.createElement('div');
+  cardsTitle.textContent = 'Cards';
+  cardsTitle.style.fontWeight = 'bold';
+  cardsTitle.style.marginTop = '8px';
+  cardsTitle.style.marginBottom = '4px';
+  modifierMenu.appendChild(cardsTitle);
+
+paletteItems.forEach(item => {
+  const btn = createMenuButton(
+    item.textContent,  // Use the item’s label for the menu
+    null,              // No image
+    () => {
+      const idx = Number(slot.dataset.index);
+      if (!state.slots[idx]) state.slots[idx] = { type:'', label:'', modifier:'', img:'' };
+
+      const prevLabel = state.slots[idx].label || '(empty)';
+      state.slots[idx].type = item.dataset.type;
+      state.slots[idx].label = item.textContent;
+
+      // Log action
+      logAction(`Slot ${idx + 1}: Card applied — ${item.textContent} (was: ${prevLabel})`);
+
+      modifierMenu.style.display = 'none';
+      renderSlots();
+    }
+  );
+
   modifierMenu.appendChild(btn);
 });
 
